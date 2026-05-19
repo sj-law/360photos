@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>360 Viewer</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum/build/pannellum.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/pannellum/build/pannellum.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0e0e0e; --surface: #161616; --border: #2a2a2a;
+      --accent: #c8f060; --text: #e8e8e0; --muted: #666; --radius: 4px;
+      --sidebar-w: 260px;
+    }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; }
+
+    /* ── FULL VIEWER LAYOUT ── */
+    body.full-layout {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      grid-template-areas: "header header" "sidebar viewer" "footer footer";
+      height: 100vh; overflow: hidden;
+      transition: grid-template-columns 0.25s ease;
+    }
+    body.full-layout.sidebar-collapsed {
+      grid-template-columns: 0px 1fr;
+    }
+
+    /* ── SINGLE PHOTO LAYOUT ── */
+    body.single-layout {
+      height: 100vh;
+      overflow: hidden;
+    }
+    body.single-layout #viewer-wrap {
+      grid-area: unset;
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* HEADER */
+    header {
+      grid-area: header; border-bottom: 1px solid var(--border);
+      padding: 10px 16px; display: flex; align-items: center; gap: 12px;
+    }
+    #toggle-btn {
+      background: none; border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--muted); cursor: pointer; padding: 4px 8px; font-size: 0.85rem;
+      transition: all 0.15s; line-height: 1; flex-shrink: 0;
+    }
+    #toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+    header h1 { font-family: 'Instrument Serif', serif; font-size: 1.3rem; font-weight: 400; }
+    header .count { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+    /* SIDEBAR */
+    #sidebar {
+      grid-area: sidebar; border-right: 1px solid var(--border);
+      overflow: hidden; display: flex; flex-direction: column;
+      transition: opacity 0.2s ease;
+    }
+    #sidebar-inner {
+      overflow-y: auto; padding: 16px 12px;
+      display: flex; flex-direction: column; gap: 6px;
+      width: var(--sidebar-w); height: 100%;
+    }
+    body.sidebar-collapsed #sidebar { opacity: 0; pointer-events: none; border-right-color: transparent; }
+    #sidebar-inner::-webkit-scrollbar { width: 4px; }
+    #sidebar-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .scene-btn {
+      background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+      padding: 10px 12px; cursor: pointer; text-align: left; transition: all 0.15s ease;
+      display: flex; flex-direction: column; gap: 3px; width: 100%;
+    }
+    .scene-btn:hover { background: var(--surface); border-color: var(--border); }
+    .scene-btn.active { background: var(--surface); border-color: var(--accent); }
+    .scene-btn .title { font-size: 0.8rem; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scene-btn.active .title { color: var(--accent); }
+    .copy-link {
+      font-size: 0.68rem; color: var(--muted); background: none; border: none;
+      padding: 0; cursor: pointer; font-family: 'DM Mono', monospace;
+      text-align: left; transition: color 0.15s; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+    }
+    .copy-link:hover { color: var(--accent); }
+    .copy-link.copied { color: var(--accent); }
+
+    /* VIEWER */
+    #viewer-wrap { grid-area: viewer; position: relative; overflow: hidden; }
+    body.single-layout #viewer-wrap {
+      grid-area: unset;
+      position: relative;
+      width: min(90vw, 1200px);
+      height: min(80vh, 700px);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #panorama { width: 100%; height: 100%; }
+
+    /* Pannellum control overrides */
+    .pnlm-controls-container { bottom: 48px !important; right: 16px !important; top: auto !important; }
+    .pnlm-control {
+      background: rgba(255,255,255,0.95) !important;
+      border: 1px solid rgba(0,0,0,0.15) !important;
+      border-radius: var(--radius) !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
+    }
+    .pnlm-control:hover {
+      background: #ffffff !important;
+      border-color: var(--accent) !important;
+    }
+    /* Black icons on white background — no filter needed */
+    .pnlm-sprite { filter: none !important; }
+
+    /* OVERLAYS */
+    #scene-label {
+      position: absolute; top: 16px; left: 16px;
+      background: rgba(14,14,14,0.75); backdrop-filter: blur(8px);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 14px; font-family: 'Instrument Serif', serif; font-size: 1.1rem;
+      pointer-events: none; transition: opacity 0.2s;
+    }
+
+    /* Copy button shown in single-photo mode */
+    #single-copy-btn {
+      position: absolute; top: 16px; right: 16px;
+      background: rgba(14,14,14,0.85); backdrop-filter: blur(8px);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.72rem;
+      padding: 7px 12px; cursor: pointer; transition: all 0.15s; display: none;
+    }
+    #single-copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #single-copy-btn.copied { border-color: var(--accent); color: var(--accent); }
+
+    /* FOOTER */
+    footer {
+      grid-area: footer; border-top: 1px solid var(--border);
+      padding: 8px 24px; display: flex; align-items: center; justify-content: space-between;
+    }
+    footer p { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.08em; }
+    footer kbd {
+      font-family: 'DM Mono', monospace; font-size: 0.6rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 3px; padding: 1px 5px; color: var(--text);
+    }
+
+    /* STATUS / LOADING */
+    #status {
+      position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; flex-direction: column; gap: 12px;
+      color: var(--muted); font-size: 0.8rem; text-align: center; line-height: 1.6;
+    }
+    #status .big { font-family: 'Instrument Serif', serif; font-size: 2rem; color: var(--border); }
+    #status code { color: var(--accent); }
+
+    .dot-loader { display: flex; gap: 6px; }
+    .dot-loader span {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
+      animation: bounce 1s infinite ease-in-out;
+    }
+    .dot-loader span:nth-child(2) { animation-delay: 0.15s; }
+    .dot-loader span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes bounce { 0%,80%,100%{transform:scale(0.6);opacity:0.4;}40%{transform:scale(1);opacity:1;} }
+  </style>
+</head>
+<body>
+
+<header id="header">
+  <button id="toggle-btn" title="Toggle sidebar">☰</button>
+  <h1>360° Viewer</h1>
+  <span class="count" id="count-label"></span>
+</header>
+
+<nav id="sidebar"><div id="sidebar-inner"></div></nav>
+
+<div id="viewer-wrap">
+  <div id="panorama"></div>
+  <div id="scene-label"></div>
+  <button id="single-copy-btn">⧉ copy link</button>
+  <div id="status">
+    <div class="big">⟳</div>
+    <div class="dot-loader"><span></span><span></span><span></span></div>
+    <p>Loading…</p>
+  </div>
+</div>
+
+<footer id="footer">
+  <p>Drag to look around &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; <kbd>↑</kbd><kbd>↓</kbd> navigate scenes</p>
+  <p id="scene-index-label"></p>
+</footer>
+
+<script>
+  // ════════════════════════════════════════════
+  //  ✏️  SET THESE ONCE — then never touch again
+  // ════════════════════════════════════════════
+  const GITHUB_USER = "sj-law";
+  const GITHUB_REPO = "360photos";
+  const PHOTOS_DIR  = "photos";
+  const BRANCH      = "main";
+  // ════════════════════════════════════════════
+
+  const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
+  let rawBase      = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${BRANCH}/${PHOTOS_DIR}/`;
+  const pageBase   = `${location.origin}${location.pathname}`;
+
+  const sidebarEl     = document.getElementById('sidebar-inner');
+  const sceneLabel    = document.getElementById('scene-label');
+  const sceneIdxLabel = document.getElementById('scene-index-label');
+  const countLabel    = document.getElementById('count-label');
+  const status        = document.getElementById('status');
+  const toggleBtn     = document.getElementById('toggle-btn');
+  const singleCopyBtn = document.getElementById('single-copy-btn');
+
+  let viewer = null;
+  let scenes = [];
+  let currentIndex = 0;
+
+  // ── SIDEBAR TOGGLE ─────────────────────────────────────────────
+  toggleBtn.addEventListener('click', () => {
+    document.body.classList.toggle('sidebar-collapsed');
+  });
+
+  function prettifyName(filename) {
+    return filename
+      .replace(/\.[^.]+$/, '')
+      .replace(/[_\-]+/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function showError(html) {
+    status.innerHTML = `<div class="big">✕</div><p>${html}</p>`;
+  }
+
+  function loadViewer(fileUrl, title) {
+    if (viewer) viewer.destroy();
+    status.style.display = 'none';
+    sceneLabel.textContent = title;
+    viewer = pannellum.viewer('panorama', {
+      type: 'equirectangular',
+      panorama: fileUrl,
+      autoLoad: true,
+      showControls: true,
+      mouseZoom: true,
+      hfov: 100, minHfov: 50, maxHfov: 120,
+    });
+  }
+
+  function copyToClipboard(text, btn, label) {
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = '✓ copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = label;
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+
+  // ── SINGLE PHOTO MODE ──────────────────────────────────────────
+  function initSingleMode(filename) {
+    document.body.className = 'single-layout';
+    document.getElementById('header').style.display  = 'none';
+    document.getElementById('footer').style.display  = 'none';
+    sceneLabel.style.display = 'none';
+
+    // show copy button so the link can be grabbed from the embed
+    singleCopyBtn.style.display = 'block';
+    const directUrl = `${pageBase}?photo=${encodeURIComponent(filename)}`;
+    singleCopyBtn.textContent = '⧉ copy link';
+    singleCopyBtn.addEventListener('click', () =>
+      copyToClipboard(directUrl, singleCopyBtn, '⧉ copy link')
+    );
+
+    const fileUrl = rawBase + encodeURIComponent(filename);
+    loadViewer(fileUrl, prettifyName(filename));
+  }
+
+  // ── FULL VIEWER MODE ───────────────────────────────────────────
+  async function initFullMode() {
+    document.body.className = 'full-layout';
+
+    // Try configured branch first, then fall back to the other common default
+    const branches = BRANCH === 'main' ? ['main', 'master'] : ['master', 'main'];
+    let files = null;
+
+    for (const branch of branches) {
+      const apiUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${PHOTOS_DIR}?ref=${branch}`;
+      try {
+        const res = await fetch(apiUrl);
+        if (res.status === 404) continue; // try next branch
+        if (!res.ok) { showError(`GitHub API returned ${res.status}. Check your repo is public.`); return; }
+        files = await res.json();
+        rawBase = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/${PHOTOS_DIR}/`;
+        break;
+      } catch (err) {
+        showError(`Network error — couldn't reach GitHub. Are you online?`);
+        console.error(err);
+        return;
+      }
+    }
+
+    if (!files) {
+      showError(`Couldn't find <code>${PHOTOS_DIR}/</code> in <code>${GITHUB_USER}/${GITHUB_REPO}</code>.<br>Create the folder and add some images, then reload.`);
+      return;
+    }
+
+
+    const images = files.filter(f =>
+      f.type === 'file' && IMAGE_EXTS.some(ext => f.name.toLowerCase().endsWith(ext))
+    );
+
+    if (!images.length) { showError(`No images found in <code>${PHOTOS_DIR}/</code>.<br>Add .jpg, .png, or .webp files and commit them.`); return; }
+
+    scenes = images.map(f => ({
+      title:    prettifyName(f.name),
+      file:     rawBase + encodeURIComponent(f.name),
+      filename: f.name,
+      directUrl: `${pageBase}?photo=${encodeURIComponent(f.name)}`
+    }));
+
+    countLabel.textContent = `${scenes.length} photo${scenes.length !== 1 ? 's' : ''}`;
+
+    scenes.forEach((scene, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'scene-btn';
+
+      const titleEl = document.createElement('span');
+      titleEl.className = 'title';
+      titleEl.textContent = scene.title;
+
+      const linkEl = document.createElement('button');
+      linkEl.className = 'copy-link';
+      linkEl.textContent = scene.filename;
+      linkEl.title = 'Copy direct link';
+
+      linkEl.addEventListener('click', e => {
+        e.stopPropagation();
+        copyToClipboard(scene.directUrl, linkEl, scene.filename);
+      });
+
+      btn.appendChild(titleEl);
+      btn.appendChild(linkEl);
+      btn.addEventListener('click', () => loadScene(i));
+      sidebarEl.appendChild(btn);
+    });
+
+    loadScene(0);
+  }
+
+  function loadScene(index) {
+    index = ((index % scenes.length) + scenes.length) % scenes.length;
+    currentIndex = index;
+    const scene = scenes[index];
+    document.querySelectorAll('.scene-btn').forEach((btn, i) =>
+      btn.classList.toggle('active', i === index)
+    );
+    sceneIdxLabel.textContent = `${index + 1} / ${scenes.length}`;
+    loadViewer(scene.file, scene.title);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (!scenes.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') loadScene(currentIndex + 1);
+    if (e.key === 'ArrowUp'   || e.key === 'ArrowLeft')  loadScene(currentIndex - 1);
+  });
+
+  // ── ROUTER ────────────────────────────────────────────────────
+  const params     = new URLSearchParams(window.location.search);
+  const photoParam = params.get('photo');
+
+  if (photoParam) {
+    initSingleMode(photoParam);
+  } else {
+    initFullMode();
+  }
+</script>
+</body>
+</html>
