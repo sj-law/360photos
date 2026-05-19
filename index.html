@@ -31,24 +31,32 @@
     }
 /* ── SINGLE PHOTO LAYOUT ── */
     body.single-layout {
-      height: 1920h;
-      width: 1080w;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: var(--bg);
+      height: 100vh !important;
+      width: 100vw !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      background: transparent !important;
     }
     body.single-layout #viewer-wrap {
-      position: absolute;
-      inset: 0;
-      width: 1920w;
-      height: 1080h;
-      border: none;
-      border-radius: 0;
-      box-shadow: none;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
+      grid-area: unset !important;
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      border: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      transform: none !important;
+    }
+    body.single-layout #panorama {
+      width: 100% !important;
+      height: 100% !important;
     }
 
     /* HEADER */
