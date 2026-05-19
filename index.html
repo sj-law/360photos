@@ -103,7 +103,9 @@
       border-color: var(--accent) !important;
     }
     /* Black icons on white background — no filter needed */
-    .pnlm-sprite { filter: none !important; }
+    /* Invert default white icons to black so they show up on the white buttons */
+    .pnlm-sprite { filter: brightness(0) !important; }
+    
 
     /* OVERLAYS */
     #scene-label {
